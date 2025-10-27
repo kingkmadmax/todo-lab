@@ -1,39 +1,45 @@
-name: CI
+name: CI Pipeline
 
 on:
-  pull_request:
   push:
+    branches: [ main, feature/* ]
+  pull_request:
     branches: [ main ]
 
 jobs:
-  scan_ruby:
+  build-and-test:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
-        with:
-          ruby-version: .ruby-version
-          bundler-cache: true
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
-      - name: Scan for common Rails security vulnerabilities using static analysis
-        run: bin/brakeman --no-pager
+      - name: Build Docker image
+        run: docker build -t todo-lab .
 
-  lint:
+      - name: Run tests in container
+        run: docker run todo-lab rspec
+
+  push-to-dockerhub:
     runs-on: ubuntu-latest
+    needs: build-and-test
+    if: success()
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up Ruby
-        uses: ruby/setup-ruby@v1
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
         with:
-          ruby-version: .ruby-version
-          bundler-cache: true
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
 
-      - name: Lint code for consistent style
-        run: bin/rubocop -f github
-
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          push: true
+          tags: ${{ secrets.DOCKER_USERNAME }}/todo-lab:latest
